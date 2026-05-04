@@ -49,6 +49,24 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#eef2f7}
 .brst:hover{background:rgba(255,255,255,0.25)}
 .bprt{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:7px 12px;border-radius:8px;font-weight:700;font-size:10px;cursor:pointer;transition:.15s;backdrop-filter:blur(4px)}
 .bprt:hover{background:rgba(255,255,255,0.25)}
+.bhst{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:7px 12px;border-radius:8px;font-weight:700;font-size:10px;cursor:pointer;transition:.15s;backdrop-filter:blur(4px)}
+.bhst:hover{background:rgba(255,255,255,0.25)}
+/* ── History Modal ── */
+.hist-modal{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+.hist-box{background:#fff;border-radius:16px;width:100%;max-width:960px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.35)}
+.hist-head{padding:16px 20px;background:linear-gradient(135deg,#1e3a8a,#4f46e5);border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;color:#fff;flex-shrink:0}
+.hist-head .ttl{font-size:14px;font-weight:800}
+.hist-head .sub{font-size:10px;opacity:.7;margin-top:3px}
+.hist-close{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:11px;font-weight:700}
+.hist-close:hover{background:rgba(255,255,255,0.25)}
+.hist-body{overflow:auto;padding:16px;flex:1}
+.hist-tbl{border-collapse:collapse;font-size:11px;white-space:nowrap;width:100%}
+.hist-tbl th{background:#f8fafc;color:#374151;padding:7px 10px;border:1px solid #e5e7eb;font-size:10px;font-weight:700;text-align:right}
+.hist-tbl th:first-child,.hist-tbl th:nth-child(2){text-align:center}
+.hist-tbl td{border:1px solid #e5e7eb;padding:5px 10px;text-align:right}
+.hist-tbl td:first-child{text-align:left;color:#6b7280;font-size:10px;background:#f8fafc;font-weight:600;white-space:nowrap}
+.hist-tbl td.hm{background:#f0fdf4;color:#166534;font-weight:700;text-align:center}
+.hist-tbl tr:hover td{background:#f0f9ff!important}
 
 /* ── Info Bar ── */
 .ibar{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:6px 12px;font-size:10px;color:#6b7280;margin-bottom:14px;display:flex;align-items:center;gap:8px}
@@ -296,6 +314,7 @@ tbody tr:hover td{filter:brightness(0.97)}
 </style>
 </head>
 <body>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <div id="toast"></div>
 <div class="tab-bar">
   <div class="tab-brand">
@@ -309,191 +328,23 @@ tbody tr:hover td{filter:brightness(0.97)}
   <button class="tb" onclick="sw('__dashboard',this)">📊 Dashboard</button>
   <button class="tb" onclick="sw('__req',this)">📋 Requirements</button>
   <button class="tb" onclick="sw('__quote',this)">💰 Quotes</button>
-  <button class="tb" onclick="sw('__track',this)">🔍 Tracker</button>
   <button class="tb" onclick="sw('__process',this)">⚙ Process</button>
 </div>
 <script>
-const WRITE_URL = "https://n8n.wowflo.io/webhook/costing-save";
-const READ_URL  = "https://n8n.wowflo.io/webhook/costing-load";
+const WRITE_URL   = "https://n8n.wowflo.io/webhook/costing-save";
+const READ_URL    = "https://n8n.wowflo.io/webhook/costing-load";
+const LIST_URL    = "https://n8n.wowflo.io/webhook/costing-list-all";
+const HISTORY_URL = "https://n8n.wowflo.io/webhook/costing-history-load";
 const MN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const now = new Date();
 const CUR = MN[now.getMonth()]+" "+String(now.getFullYear()).slice(2);
 
-const S8 = ['75CM','80CM','85CM','90CM','95CM','100CM','105CM','110CM'];
-const S7 = ['80CM','85CM','90CM','95CM','100CM','105CM','110CM'];
-
-function stdTrims(n){ return [
-  {name:'INSERT CARD',desc:'New Embossing',costs:a(n,1.70)},
-  {name:'FUSING STICKER',desc:'',costs:a(n,0.60)},
-  {name:'CHEST LABEL',desc:'',costs:a(n,1.00)},
-  {name:'TESTING & TRANSPORT',desc:'',costs:a(n,0.15)},
-  {name:'STICKER & SILICA GEL',desc:'',costs:a(n,0.30)},
-  {name:'GRAVURE POLYBAG',desc:'',costs:a(n,2.50)},
-  {name:'MASTER BOX',desc:'',costs:n===8?[1.94,1.94,1.94,1.94,3.36,3.36,3.36,3.36]:[1.94,1.94,1.94,3.36,3.36,3.36,3.36]},
-  {name:'CARTON / PACKING',desc:'',costs:a(n,0.90)},
-];}
-function a(n,v){ return Array(n).fill(v); }
+function slugify(name){ return (name||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''); }
 function deepCopy(o){ return JSON.parse(JSON.stringify(o)); }
-
-const DEFS = {
-  breezo:{
-    name:'BREEZO',brand:'M.P. HOSERIES',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S8,
-    rawMats:[
-      {cat:'YARN (SSM)',spec:"40'S RL",nw:29177,old:28893},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'BLEACHING',spec:'SOFT-FLOW',nw:3400,old:3400},
-      {cat:'COMPACTING',spec:'',nw:700,old:700},
-    ],
-    cons:[72,78,90,100,108,116,127,133],
-    mrps:[129,129,149,149,169,169,179,179],
-    trims:stdTrims(8),
-    lossPct:7,rejPct:2,profitPct:5,cmt:8.75,freight:0.60,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-  comfo:{
-    name:'COMFO',brand:'M.P. HOSERIES',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S8,
-    rawMats:[
-      {cat:'YARN (SSM)',spec:"40'S RL",nw:29177,old:28893},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'BLEACHING',spec:'SOFT-FLOW',nw:3400,old:3400},
-      {cat:'COMPACTING',spec:'',nw:700,old:700},
-    ],
-    cons:[98,100,125,139,150,162,172,180],
-    mrps:[118,118,138,138,158,158,168,168],
-    trims:stdTrims(8),
-    lossPct:7,rejPct:2,profitPct:5,cmt:8.75,freight:0.60,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-  smarto:{
-    name:'SMARTO ASS',brand:'M.P. HOSERIES',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S8,
-    rawMats:[
-      {cat:'YARN (GREY)',spec:"40'S RL",nw:14750,old:14399},
-      {cat:'DYEING',spec:'',nw:11400,old:11400},
-      {cat:'HEAT WASH',spec:'',nw:800,old:800},
-      {cat:'CHARCOAL YARN BLEND',spec:'',nw:28638,old:28638},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'COMPACTING',spec:'',nw:700,old:700},
-    ],
-    cons:[43,44,53,58,63,68,71,76],
-    mrps:[149,149,169,169,189,189,199,199],
-    trims:stdTrims(8),
-    lossPct:5,rejPct:2,profitPct:5,cmt:10.50,freight:0.60,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-  breezosum:{
-    name:'BREEZO SUM',brand:'SUMRUTHI KNIT WEAR',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S7,
-    rawMats:[
-      {cat:'YARN (SSM)',spec:"40'S RL",nw:20238,old:19952},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'BLEACHING',spec:'SOFT-FLOW',nw:3800,old:3800},
-      {cat:'COMPACTING',spec:'',nw:702,old:702},
-    ],
-    cons:[78,90,100,108,116,127,133],
-    mrps:[129,149,149,169,169,179,179],
-    trims:stdTrims(7),
-    lossPct:7,rejPct:2,profitPct:5,cmt:8.75,freight:0.60,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-  comfosum:{
-    name:'COMFO SUM',brand:'SUMRUTHI KNIT WEAR',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S8,
-    rawMats:[
-      {cat:'YARN (SSM)',spec:"40'S RL",nw:20238,old:19952},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'BLEACHING',spec:'SOFT-FLOW',nw:3400,old:3400},
-      {cat:'COMPACTING',spec:'',nw:700,old:700},
-    ],
-    cons:[98,100,125,139,150,162,172,180],
-    mrps:[110,110,130,130,155,155,170,170],
-    trims:stdTrims(8),
-    lossPct:7,rejPct:2,profitPct:5,cmt:9.75,freight:0.60,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-  bravosum:{
-    name:'BRAVO SUM',brand:'SUMRUTHI KNIT WEAR',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S7,
-    rawMats:[
-      {cat:'YARN (SSM)',spec:"40'S RL",nw:20238,old:19952},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'BLEACHING',spec:'SOFT-FLOW',nw:3800,old:3800},
-      {cat:'COMPACTING',spec:'',nw:702,old:702},
-    ],
-    cons:[80,99,107,121,133,143,152],
-    mrps:[198,228,228,258,258,278,278],
-    trims:stdTrims(7),
-    lossPct:7,rejPct:2,profitPct:5,cmt:9.75,freight:0.60,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-  dezino:{
-    name:'DEZINO BAJAJ',brand:'DEZINO',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S8,
-    rawMats:[
-      {cat:'YARN (GREY)',spec:"40'S RL",nw:27124,old:26839},
-      {cat:'DYEING',spec:'',nw:11400,old:11400},
-      {cat:'TOTAL GREY YARN',spec:'',nw:30019,old:29734},
-      {cat:'CHARCOAL MELANGE',spec:'',nw:26867,old:26867},
-      {cat:'HEAT WASH',spec:'',nw:3900,old:3900},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'COMPACTING',spec:'',nw:700,old:700},
-    ],
-    cons:[39,43,45,49,51,55,59,61],
-    mrps:[149,149,169,169,189,189,199,199],
-    trims:[
-      {name:'INSERT CARD',desc:'',costs:a(8,0.47)},
-      {name:'FUSING STICKER',desc:'',costs:a(8,0.51)},
-      {name:'CHEST LABEL',desc:'',costs:a(8,0.15)},
-      {name:'TESTING & TRANSPORT',desc:'',costs:a(8,0.30)},
-      {name:'LABEL',desc:'',costs:a(8,1.70)},
-      {name:'GRAVURE POLYBAG',desc:'',costs:a(8,2.50)},
-      {name:'MASTER BOX',desc:'',costs:[1.94,1.94,1.94,1.94,3.36,3.36,3.36,3.36]},
-      {name:'CARTON / PACKING',desc:'',costs:a(8,0.90)},
-    ],
-    lossPct:7,rejPct:2,profitPct:5,cmt:12.00,freight:0.40,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-  fino:{
-    name:'FINO BAJAJ 40',brand:'BAJAJ KNITERS',newMonth:CUR,oldMonth:'Feb 26',
-    sizes:S8,
-    rawMats:[
-      {cat:'YARN (GREY)',spec:"40'S RL",nw:37124,old:36839},
-      {cat:'DYEING',spec:'',nw:11400,old:11400},
-      {cat:'HEAT WASH',spec:'',nw:1100,old:1100},
-      {cat:'CHARCOAL MELANGE',spec:'',nw:66433,old:66433},
-      {cat:'KNITTING',spec:'26GG',nw:1400,old:1400},
-      {cat:'CARRIAGE',spec:'',nw:120,old:120},
-      {cat:'COMPACTING',spec:'',nw:700,old:700},
-    ],
-    cons:[36,45,47,42,45,49,52,59],
-    mrps:[199,199,229,229,259,259,279,279],
-    trims:[
-      {name:'PRINTING',desc:'',costs:a(8,5.90)},
-      {name:'FUSING STICKER',desc:'',costs:a(8,0.59)},
-      {name:'CHEST LABEL',desc:'',costs:a(8,0.59)},
-      {name:'TESTING & TRANSPORT',desc:'',costs:a(8,0.15)},
-      {name:'GRIP AND PAGES',desc:'',costs:a(8,0.40)},
-      {name:'OUTER BOX',desc:'',costs:a(8,3.40)},
-      {name:'INNER BOX',desc:'',costs:a(8,1.15)},
-      {name:'CARTON / PACKING',desc:'',costs:a(8,1.15)},
-    ],
-    lossPct:5,rejPct:2,profitPct:5,cmt:19.00,freight:0.40,
-    tradePct:30,marginPct:43,schemePct:8,whExp:8,
-  },
-};
 
 const ST = {};
 const DIRTY = {};
-Object.keys(DEFS).forEach(id => { ST[id] = deepCopy(DEFS[id]); DIRTY[id] = false; });
+const LAST_SAVED = {};
 
 /* ── Helpers ── */
 const avg = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
@@ -513,7 +364,18 @@ function toast(msg,type="success"){
   setTimeout(()=>t.style.display="none",4000);
 }
 function setBadge(id,st,lbl){ const b=document.getElementById(id+"-badge"); if(b){b.className="badge "+st; b.textContent=lbl;} }
-function markDirty(id){ DIRTY[id]=true; const u=document.getElementById(id+"-uns"); const s=document.getElementById(id+"-save"); if(u)u.style.display=""; if(s)s.disabled=false; }
+const _autoSaveTimers = {};
+function markDirty(id){
+  DIRTY[id]=true;
+  const u=document.getElementById(id+"-uns");
+  const s=document.getElementById(id+"-save");
+  if(u)u.style.display="";
+  if(s)s.disabled=false;
+  // Auto-save 1.5s after last change
+  setBadge(id,"loading","⟳ Auto-saving…");
+  if(_autoSaveTimers[id]) clearTimeout(_autoSaveTimers[id]);
+  _autoSaveTimers[id] = setTimeout(()=>{ if(DIRTY[id]) save(id); }, 1500);
+}
 
 /* ══ CALC ══ */
 function calc(P){
@@ -687,14 +549,10 @@ function exportCSV(id){
   toast("✓ CSV exported: "+P.name);
 }
 
-/* ══ RESET TO DEFAULTS ══ */
+/* ══ RELOAD FROM DB ══ */
 function resetToDefaults(id){
-  if(!confirm('Reset "'+ST[id].name+'" to factory defaults?\n\nCurrent in-memory values will be discarded. Saved Supabase data is NOT deleted.')) return;
-  ST[id]=deepCopy(DEFS[id]); DIRTY[id]=false;
-  const u=document.getElementById(id+"-uns"); const s=document.getElementById(id+"-save");
-  if(u)u.style.display="none"; if(s)s.disabled=true;
-  setBadge(id,"idle","○ Defaults restored");
-  render(id); toast(ST[id].name+" reset to factory defaults","warn");
+  if(!confirm('Reload "'+ST[id].name+'" from Supabase?\n\nUnsaved in-memory edits will be discarded.')) return;
+  LOADED[id]=false; load(id);
 }
 
 /* ══ TOGGLE IBAR ══ */
@@ -795,22 +653,27 @@ function exportAllCSV(){
 async function save(id){
   const P=ST[id]; const btn=document.getElementById(id+"-save"); if(btn) btn.disabled=true;
   const monthChanged = P.newMonth !== CUR;
+  const baseline = LAST_SAVED[id] || P.rawMats;
   const payload={
     ...P,
-    rawMats: monthChanged ? P.rawMats.map(r=>({...r,old:r.nw})) : P.rawMats,
-    oldMonth: monthChanged ? P.newMonth : P.oldMonth,
+    rawMats: P.rawMats.map((r,i)=>({...r, old: baseline[i]!==undefined ? baseline[i].nw : r.old})),
+    oldMonth: CUR,
     newMonth: CUR, savedAt: new Date().toISOString()
   };
   setBadge(id,"loading","⟳ Saving…");
   try{
     const res=await fetch(WRITE_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
     if(!res.ok) throw new Error("HTTP "+res.status);
-    Object.assign(ST[id], payload); DIRTY[id]=false;
+    Object.assign(ST[id], payload);
+    LAST_SAVED[id] = payload.rawMats.map(r=>({...r}));
+    DIRTY[id]=false;
     const u=document.getElementById(id+"-uns"); if(u) u.style.display="none";
     setBadge(id,"connected","✓ Supabase Live");
-    toast(monthChanged?"✓ Saved! OLD ← "+payload.oldMonth:"✓ Saved (same month)");
+    toast(monthChanged?"✓ Saved! OLD ← "+payload.oldMonth:"✓ Saved "+CUR);
   }catch(e){
-    Object.assign(ST[id], payload); DIRTY[id]=false;
+    Object.assign(ST[id], payload);
+    LAST_SAVED[id] = payload.rawMats.map(r=>({...r}));
+    DIRTY[id]=false;
     const u=document.getElementById(id+"-uns"); if(u) u.style.display="none";
     setBadge(id,"local","◆ Local Only");
     toast("⚠ Local only — "+e.message,"warn");
@@ -828,6 +691,7 @@ async function load(id){
     const data=await res.json();
     if(data?.rawMats?.length){
       Object.assign(ST[id], data);
+      LAST_SAVED[id] = data.rawMats.map(r=>({...r}));
       setBadge(id,"connected","✓ Supabase Live");
       toast("✓ "+productName+" loaded");
     } else throw new Error("No DB record for "+productName);
@@ -836,6 +700,7 @@ async function load(id){
     toast("ℹ Using defaults — save to sync","warn");
   }
   render(id);
+  const btn=document.getElementById(id+"-save"); if(btn) btn.disabled=false;
 }
 
 /* ══ TAB SWITCH ══ */
@@ -870,32 +735,51 @@ document.addEventListener("keydown",e=>{
   }
 });
 
-/* ══ BUILD TABS ══ */
-const TAB_INFO=[
-  {id:"breezo",   lbl:"MP BREEZO"},
-  {id:"comfo",    lbl:"MP COMFO"},
-  {id:"smarto",   lbl:"MP SMARTO ASS"},
-  {id:"breezosum",lbl:"BREEZO SUM"},
-  {id:"comfosum", lbl:"COMFO SUM"},
-  {id:"bravosum", lbl:"BRAVO SUM"},
-  {id:"dezino",   lbl:"DEZINO BAJAJ"},
-  {id:"fino",     lbl:"FINO BAJAJ 40"},
+/* ══ BUILD TABS (DB-DRIVEN) ══ */
+let TAB_INFO = [];
+
+const DESIGN_PALETTE = [
+  ['#4f46e5','#7c3aed'],['#0ea5e9','#0284c7'],['#10b981','#059669'],
+  ['#f59e0b','#ea580c'],['#ec4899','#db2777'],['#14b8a6','#0d9488'],
+  ['#8b5cf6','#6d28d9'],['#3b82f6','#4f46e5'],
 ];
-TAB_INFO.forEach(({id},idx)=>{
-  const P=ST[id];
-  const div=document.createElement("div");
-  div.id="tab-"+id; div.className="tp";
-  div.innerHTML=`
-    <div class="topbar">
+
+async function loadAllDesigns(){
+  try {
+    const res = await fetch(LIST_URL);
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    (data.designs || []).forEach(P => {
+      const id = slugify(P.name);
+      ST[id] = {...P, newMonth: P.newMonth || CUR};
+      LAST_SAVED[id] = (P.rawMats||[]).map(r=>({...r}));
+      DIRTY[id] = false;
+      TAB_INFO.push({id, lbl: P.name});
+    });
+  } catch(e) {
+    console.warn('[loadAllDesigns]', e);
+    toast('⚠ Could not load designs from DB — check bridge config','warn');
+  }
+}
+
+function buildDesignTabs(){
+  TAB_INFO.forEach(({id}, idx) => {
+    const P = ST[id];
+    const [c1,c2] = DESIGN_PALETTE[idx % DESIGN_PALETTE.length];
+    const div = document.createElement("div");
+    div.id = "tab-"+id; div.className = "tp";
+    div.innerHTML = `
+    <div class="topbar" style="background:linear-gradient(135deg,#1e3a8a 0%,${c1} 60%,${c2} 100%)">
       <div class="topbar-left">
-        <div class="ttl">${P.brand} &mdash; ${P.name}</div>
+        <div class="ttl">${P.brand||''} &mdash; ${P.name}</div>
         <div class="sub">NEW: <b id="${id}-lnew">—</b> &nbsp;|&nbsp; OLD: <span class="o"><b id="${id}-lold">—</b></span> &nbsp;<span id="${id}-lsaved" style="opacity:.6"></span></div>
       </div>
       <div class="tbr">
         <button class="back-btn" onclick="openDesignList()">← All Designs</button>
         <span class="badge idle" id="${id}-badge">○ Idle</span>
         <span class="uns" id="${id}-uns" style="display:none">● Unsaved</span>
-        <button class="brst" onclick="resetToDefaults('${id}')">↺ Reset</button>
+        <button class="brst" onclick="resetToDefaults('${id}')">↺ Reload DB</button>
+        <button class="bhst" onclick="showHistory('${id}')">📋 History</button>
         <button class="bprt" onclick="printTab('${id}')">🖨 Print</button>
         <button class="bexp" onclick="exportCSV('${id}')">⬇ CSV</button>
         <button class="bsv" id="${id}-save" disabled onclick="save('${id}')">💾 Save &amp; Archive</button>
@@ -928,13 +812,14 @@ TAB_INFO.forEach(({id},idx)=>{
       <div class="scard-header c-orange">④ Key Metrics</div>
       <div class="scard-pad"><div class="kpis" id="${id}-kpis"></div></div>
     </div>
-    <div class="pg-footer"><span>🟢 n8n · wowflo.io → Supabase &nbsp;|&nbsp; Yellow cells are editable &nbsp;|&nbsp; Ctrl+S to save</span></div>`;
-  document.body.appendChild(div);
-});
+    <div class="pg-footer"><span>🟢 Supabase Live &nbsp;|&nbsp; Yellow cells are editable &nbsp;|&nbsp; Ctrl+S to save</span></div>`;
+    document.body.appendChild(div);
+  });
 
-const sumDiv=document.createElement("div");
-sumDiv.id="tab-__summary"; sumDiv.className="tp";
-document.body.appendChild(sumDiv);
+  const sumDiv = document.createElement("div");
+  sumDiv.id = "tab-__summary"; sumDiv.className = "tp";
+  document.body.appendChild(sumDiv);
+}
 
 /* ══════════════════════════════════════
    TRACKING SYSTEM
@@ -1005,26 +890,17 @@ function statusBadge(status){
 }
 
 /* ── DESIGN LIBRARY ── */
-const DESIGN_COLORS={
-  breezo:['#4f46e5','#7c3aed'],
-  comfo:['#0ea5e9','#0284c7'],
-  smarto:['#f59e0b','#d97706'],
-  breezosum:['#10b981','#059669'],
-  comfosum:['#14b8a6','#0d9488'],
-  bravosum:['#ec4899','#db2777'],
-  dezino:['#3b82f6','#1d4ed8'],
-  fino:['#8b5cf6','#6d28d9'],
-};
+
 function renderDesigns(){
   const wrap=document.getElementById('tab-__designs');
   let cards='';
-  TAB_INFO.forEach(({id})=>{
+  TAB_INFO.forEach(({id},idx)=>{
     const P=ST[id];
     const {rm,sc,mc}=calc(P);
     const avgSR=avg(sc.map(x=>x.sr));
     const avgMRP=avg(P.mrps);
     const avgMU=avg(mc.map(m=>m.markup));
-    const [c1,c2]=DESIGN_COLORS[id]||['#4f46e5','#7c3aed'];
+    const [c1,c2]=DESIGN_PALETTE[idx%DESIGN_PALETTE.length];
     const saved=P.savedAt?new Date(P.savedAt).toLocaleDateString():'Not saved';
     cards+=`<div class="design-card" onclick="openDesign('${id}')">
       <div class="design-card-hdr" style="background:linear-gradient(135deg,${c1},${c2})">
@@ -1288,16 +1164,19 @@ function renderRequirements(){
         <div class="ttl">📋 Requirements</div>
         <div class="sub">${REQS.length} total requirements &nbsp;|&nbsp; Raise a new style/colour/size requirement</div>
       </div>
-      <div class="tbr">
-        <button onclick="toggleNewReqForm()" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:8px 16px;border-radius:8px;font-weight:700;font-size:11px;cursor:pointer">+ New Requirement</button>
+      <div class="tbr" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="downloadReqTemplate()" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:8px 14px;border-radius:8px;font-weight:700;font-size:11px;cursor:pointer">⬇ Template</button>
+        <label style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:8px 14px;border-radius:8px;font-weight:700;font-size:11px;cursor:pointer">
+          📂 Upload Excel<input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleReqExcel(event)"/>
+        </label>
+        <button onclick="toggleNewReqForm()" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.3);padding:8px 14px;border-radius:8px;font-weight:700;font-size:11px;cursor:pointer">+ Manual</button>
       </div>
     </div>
 
     <div class="form-card" id="new-req-form" style="display:none">
       <div class="form-title">📝 New Style Requirement</div>
       <div class="form-row">
-        <div class="form-group"><label>Style Name</label><input type="text" id="req-style" placeholder="e.g. BREEZO-RN"/></div>
-        <div class="form-group"><label>Category / Colour</label><input type="text" id="req-color" placeholder="e.g. WHITE, ASST, PRINTED"/></div>
+        <div class="form-group"><label>Style / Design</label><select id="req-style"><option value="">— Select design —</option>${TAB_INFO.map(t=>`<option value="${t.lbl}">${t.lbl}</option>`).join('')}</select></div>
         <div class="form-group"><label>Required By</label><input type="date" id="req-date" value="${new Date(Date.now()+7*86400000).toISOString().slice(0,10)}"/></div>
         <div class="form-group"><label>Submitted By</label><input type="text" id="req-by" placeholder="Your name"/></div>
       </div>
@@ -1325,9 +1204,9 @@ function renderRequirements(){
           ? '<div style="padding:32px;text-align:center;color:#9ca3af;font-size:12px">No requirements yet — click <b>+ New Requirement</b> above</div>'
           : `<div style="overflow-x:auto"><table class="req-table">
               <thead><tr>
-                <th>REQ ID</th><th>Style</th><th>Category</th>
+                <th>REQ ID</th><th>Style</th>
                 ${ALL_SIZES.map(s=>'<th>'+s+'</th>').join('')}
-                <th>Grand Total</th><th>Required By</th><th>By</th><th>Status</th><th></th>
+                <th>Grand Total</th><th>Required By</th><th>By</th><th>Submitted</th><th>Status</th>
               </tr></thead>
               <tbody>
                 ${REQS.slice().reverse().map(req=>{
@@ -1336,13 +1215,12 @@ function renderRequirements(){
                   return `<tr>
                     <td class="id-cell">${req.id}</td>
                     <td><b>${req.style}</b></td>
-                    <td>${req.category}</td>
                     ${ALL_SIZES.map(sz=>`<td style="text-align:right;color:${req.sizes[sz]?'#1e3a8a':'#d1d5db'}">${req.sizes[sz]||'—'}</td>`).join('')}
                     <td style="text-align:right;font-weight:800;color:#4f46e5">${total.toLocaleString()}</td>
                     <td>${req.requiredBy||'—'}</td>
                     <td>${req.submittedBy||'—'}</td>
+                    <td style="font-size:10px;color:#6b7280">${req.createdAt?new Date(req.createdAt).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</td>
                     <td>${statusBadge(status)}</td>
-                    <td><button class="btn-outline" style="font-size:9px;padding:4px 10px" onclick="trackReqId('${req.id}')">🔍 Track</button></td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -1365,8 +1243,7 @@ function updateReqGrandTotal(){
 }
 async function submitRequirement(){
   const style=(document.getElementById('req-style').value||'').trim();
-  const category=(document.getElementById('req-color').value||'').trim();
-  if(!style||!category){toast('Style and Category are required','error');return;}
+  if(!style){toast('Select a design/style','error');return;}
   const sizes={};
   ALL_SIZES.forEach(sz=>{
     const v=parseInt(document.getElementById('req-sz-'+sz.replace(/\s/g,'_'))?.value)||0;
@@ -1374,7 +1251,7 @@ async function submitRequirement(){
   });
   if(!Object.keys(sizes).length){toast('Enter at least one size quantity','error');return;}
   const req={
-    id:genReqId(), style, category, sizes,
+    id:genReqId(), style, sizes,
     grandTotal:Object.values(sizes).reduce((a,b)=>a+b,0),
     requiredBy:document.getElementById('req-date').value||'',
     submittedBy:(document.getElementById('req-by').value||'').trim(),
@@ -1385,6 +1262,62 @@ async function submitRequirement(){
   try{await fetch(REQ_SAVE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)});}catch(e){}
   toast('✓ Requirement '+req.id+' raised!');
   renderRequirements();
+}
+
+/* ── EXCEL UPLOAD ── */
+const REQ_EXCEL_COLS = ['Style','Required By','Submitted By','Notes',...ALL_SIZES];
+
+function downloadReqTemplate(){
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([REQ_EXCEL_COLS]);
+  // sample row
+  XLSX.utils.sheet_add_aoa(ws,[['BREEZO',new Date(Date.now()+7*86400000).toISOString().slice(0,10),'Ram','','100','200','300','200','100','50','','','','','']],{origin:'A2'});
+  ws['!cols'] = REQ_EXCEL_COLS.map(c=>({wch:Math.max(c.length+2,12)}));
+  XLSX.utils.book_append_sheet(wb,ws,'Requirements');
+  XLSX.writeFile(wb,'requirement_template.xlsx');
+  toast('✓ Template downloaded');
+}
+
+async function handleReqExcel(e){
+  const file = e.target.files[0]; if(!file) return;
+  e.target.value='';
+  try {
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab, {type:'array', cellDates:true});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    if(!rows.length){ toast('Excel is empty','error'); return; }
+
+    let added=0, skipped=0;
+    const saves=[];
+    rows.forEach(row=>{
+      const style = String(row['Style']||row['STYLE']||'').trim();
+      if(!style){ skipped++; return; }
+      const sizes={};
+      ALL_SIZES.forEach(sz=>{
+        const v=parseInt(row[sz]||row[sz.toLowerCase()]||0)||0;
+        if(v>0) sizes[sz]=v;
+      });
+      if(!Object.keys(sizes).length){ skipped++; return; }
+      const req={
+        id:genReqId(), style, sizes,
+        grandTotal:Object.values(sizes).reduce((a,b)=>a+b,0),
+        requiredBy: (()=>{const rv=row['Required By']||row['REQUIRED BY']||''; if(!rv) return ''; if(rv instanceof Date) return rv.toISOString().slice(0,10); const d=new Date(rv); return isNaN(d)?String(rv).slice(0,10):d.toISOString().slice(0,10);})(),
+        submittedBy: String(row['Submitted By']||row['SUBMITTED BY']||'').trim(),
+        notes: String(row['Notes']||row['NOTES']||'').trim(),
+        status:'pending', createdAt:new Date().toISOString()
+      };
+      REQS.push(req);
+      saves.push(fetch(REQ_SAVE_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(req)}).catch(()=>{}));
+      added++;
+    });
+    await Promise.all(saves);
+    toast(added+' requirement'+(added!==1?'s':'')+' imported'+(skipped?' ('+skipped+' skipped)':''));
+    renderRequirements();
+  } catch(err) {
+    console.error('[req-excel]',err);
+    toast('⚠ Failed to parse Excel: '+err.message,'error');
+  }
 }
 
 /* ── VENDOR QUOTE TAB ── */
@@ -1406,7 +1339,7 @@ function renderVendorQuote(){
           <label>Requirement</label>
           <select id="quote-req-sel" onchange="onQuoteReqChange()">
             <option value="">— Select a requirement —</option>
-            ${openReqs.map(r=>`<option value="${r.id}">${r.id} — ${r.style} (${r.category}) · ${r.grandTotal} pcs</option>`).join('')}
+            ${openReqs.map(r=>`<option value="${r.id}">${r.id} — ${r.style} · ${r.grandTotal} pcs</option>`).join('')}
           </select>
         </div>
       </div>
@@ -1473,7 +1406,7 @@ function onQuoteReqChange(){
   const total=Object.values(req.sizes).reduce((a,b)=>a+b,0);
   document.getElementById('quote-req-sizes').innerHTML=`
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 16px">
-      <div style="font-size:12px;font-weight:800;color:#065f46;margin-bottom:8px">${req.style} — ${req.category} &nbsp;·&nbsp; Required by: <b>${req.requiredBy||'—'}</b></div>
+      <div style="font-size:12px;font-weight:800;color:#065f46;margin-bottom:8px">${req.style} &nbsp;·&nbsp; Required by: <b>${req.requiredBy||'—'}</b></div>
       <div class="sizes-pill-row">
         ${Object.entries(req.sizes).map(([sz,qty])=>`<span class="sz-pill">${sz}: ${qty}</span>`).join('')}
         <span class="sz-pill total">Total: ${total.toLocaleString()} pcs</span>
@@ -1692,8 +1625,14 @@ function doTrackId(id){
                   ? `<button onclick="toggleStageForm('${formId}')" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;padding:6px 16px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;margin-top:2px">+ Log this stage</button>`
                   : '<span style="color:#d1d5db">Waiting for previous stage</span>'
             }</div>
-            ${isActive?`
-            <div id="${formId}" class="log-form-wrap" data-reqid="${id}">
+            ${isActive?(()=>{
+              const prevLog=si>0?logs.find(l=>l.stage===PROD_STAGES[si-1].key):null;
+              const prevLabel=si>0?(PROD_STAGES[si-1].label.split('/')[0].trim()):'Ordered';
+              const limitSizes=prevLog?.sizeQty?Object.fromEntries(Object.keys(req.sizes).map(sz=>[sz,prevLog.sizeQty[sz]||0])):req.sizes;
+              const limitTotal=Object.values(limitSizes).reduce((a,b)=>a+b,0);
+              const prevKey=si>0?PROD_STAGES[si-1].key:'';
+              return `
+            <div id="${formId}" class="log-form-wrap" data-reqid="${id}" data-prevstagekey="${prevKey}">
               <div style="font-size:12px;font-weight:800;color:#4f46e5;margin-bottom:12px">${stage.icon} Logging: ${stage.label}</div>
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
                 <div class="form-group" style="margin:0">
@@ -1709,7 +1648,7 @@ function doTrackId(id){
                   <input type="text" id="${formId}-notes" placeholder="e.g. batch #3, 2nd shift"/>
                 </div>
               </div>
-              <div style="font-size:10px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px">📦 Enter Qty Processed per Size (Ordered shown in blue)</div>
+              <div style="font-size:10px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px">📦 Enter Qty per Size — max allowed = ${prevLog?'prev stage ('+prevLabel+')':'ordered qty'}</div>
               <div style="overflow-x:auto;border-radius:8px;border:1px solid #e0e7ff">
                 <table class="sz-entry-table">
                   <thead><tr>
@@ -1719,9 +1658,9 @@ function doTrackId(id){
                   </tr></thead>
                   <tbody>
                     <tr>
-                      <td class="row-lbl">📦 Ordered</td>
-                      ${Object.entries(req.sizes).map(([sz,q])=>`<td class="ord-cell">${q}</td>`).join('')}
-                      <td class="ord-cell tot-col">${total}</td>
+                      <td class="row-lbl">📦 ${prevLog?prevLabel:'Ordered'}</td>
+                      ${Object.keys(req.sizes).map(sz=>`<td class="ord-cell">${limitSizes[sz]||0}</td>`).join('')}
+                      <td class="ord-cell tot-col">${limitTotal}</td>
                     </tr>
                     <tr>
                       <td class="row-lbl">✏️ Processed</td>
@@ -1745,9 +1684,9 @@ function doTrackId(id){
                   style="background:#fff;border:1.5px solid #e5e7eb;color:#6b7280;padding:9px 16px;border-radius:8px;font-size:11px;cursor:pointer;font-weight:600">
                   Cancel
                 </button>
-                <span id="${formId}-warn" style="font-size:10px;color:#ef4444;font-weight:700;display:none">⚠ Qty exceeds order for some sizes</span>
+                <span id="${formId}-warn" style="font-size:10px;color:#ef4444;font-weight:700;display:none">⚠ Qty exceeds previous stage — cannot submit</span>
               </div>
-            </div>`:''}
+            </div>`;})():''}
           </div>
         </div>`;
       }).join('')}
@@ -1765,14 +1704,18 @@ function calcStageTotal(formId){
   const reqId=form?.dataset?.reqid;
   const req=REQS.find(r=>r.id===reqId);
   if(!req) return;
-  const orderedTotal=Object.values(req.sizes).reduce((a,b)=>a+b,0);
+  const prevKey=form?.dataset?.prevstagekey||'';
+  const prevLog=prevKey?PROD_LOGS.filter(l=>l.reqId===reqId).find(l=>l.stage===prevKey):null;
+  const limitSizes=prevLog?.sizeQty?Object.fromEntries(Object.keys(req.sizes).map(sz=>[sz,prevLog.sizeQty[sz]||0])):req.sizes;
+  const limitTotal=Object.values(limitSizes).reduce((a,b)=>a+b,0);
   let processedTotal=0, hasExcess=false;
-  Object.entries(req.sizes).forEach(([sz,ordered])=>{
+  Object.keys(req.sizes).forEach(sz=>{
+    const limit=limitSizes[sz]||0;
     const key=sz.replace(/[^a-zA-Z0-9]/g,'_');
     const inp=document.getElementById(formId+'-sz-'+key);
     const processed=parseInt(inp?.value)||0;
     processedTotal+=processed;
-    const diff=processed-ordered;
+    const diff=processed-limit;
     const diffCell=document.getElementById(formId+'-diff-'+key);
     if(diffCell){
       if(!inp?.value){diffCell.textContent='—';diffCell.style.color='#9ca3af';}
@@ -1784,11 +1727,11 @@ function calcStageTotal(formId){
   const totCell=document.getElementById(formId+'-sztotal');
   if(totCell){
     totCell.textContent=processedTotal.toLocaleString();
-    totCell.style.color=processedTotal===orderedTotal?'#059669':processedTotal>orderedTotal?'#dc2626':'#1e3a8a';
+    totCell.style.color=processedTotal===limitTotal?'#059669':processedTotal>limitTotal?'#dc2626':'#1e3a8a';
   }
   const diffTot=document.getElementById(formId+'-difftot');
   if(diffTot){
-    const d=processedTotal-orderedTotal;
+    const d=processedTotal-limitTotal;
     if(processedTotal===0){diffTot.textContent='—';diffTot.style.color='#9ca3af';}
     else if(d===0){diffTot.textContent='✓ Match';diffTot.style.color='#059669';}
     else if(d<0){diffTot.textContent=d+' pcs';diffTot.style.color='#d97706';}
@@ -1811,6 +1754,13 @@ function submitStageLog(reqId,stage,stageLabel,formId){
     });
   }
   if(totalQty===0){toast('Enter at least one size quantity','error');return;}
+  const form2=document.getElementById(formId);
+  const prevKey2=form2?.dataset?.prevstagekey||'';
+  const prevLog2=prevKey2?PROD_LOGS.filter(l=>l.reqId===reqId).find(l=>l.stage===prevKey2):null;
+  if(prevLog2?.sizeQty){
+    const exceeded=Object.entries(sizeQty).some(([sz,q])=>q>(prevLog2.sizeQty[sz]||0));
+    if(exceeded){toast('⚠ Cannot log more than previous stage quantity','error');return;}
+  }
   const dtVal=document.getElementById(formId+'-dt')?.value||'';
   const notes=(document.getElementById(formId+'-notes')?.value||'').trim();
   const date=dtVal?new Date(dtVal).toISOString():new Date().toISOString();
@@ -1954,8 +1904,10 @@ sw=function(id,btn){
   _swOrig(id,btn);
 };
 
-// Initial load: fetch all data from DB, then render dashboard
+// Initial load: fetch designs from DB, build tabs, then load tracking
 (async function(){
+  await loadAllDesigns();
+  buildDesignTabs();
   await _loadTrackingFromDB();
   document.getElementById('tab-__dashboard').classList.add('act');
   document.querySelectorAll('.tb').forEach(b=>{
@@ -1963,6 +1915,59 @@ sw=function(id,btn){
   });
   renderDashboard();
 })();
+
+/* ── COSTING HISTORY ── */
+async function showHistory(id){
+  const P = ST[id];
+  document.getElementById('hist-title').textContent = P.name + ' — Change History';
+  document.getElementById('hist-sub').textContent = 'Loading…';
+  document.getElementById('hist-body').innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af">Loading…</div>';
+  document.getElementById('hist-modal').style.display = 'flex';
+  try{
+    const res = await fetch(HISTORY_URL + '?product=' + encodeURIComponent(P.name));
+    const { history } = await res.json();
+    if(!history || !history.length){
+      document.getElementById('hist-sub').textContent = 'No history yet — save the sheet to start tracking';
+      document.getElementById('hist-body').innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af">No saves recorded yet.</div>';
+      return;
+    }
+    document.getElementById('hist-sub').textContent = history.length + ' saves recorded';
+    const matLabels = (history[0].data.rawMats||[]).map(r=>r.cat||r.label||r.key||'?');
+    let html = '<table class="hist-tbl"><thead><tr>';
+    html += '<th style="text-align:left;min-width:130px">Saved At</th><th>Month</th>';
+    matLabels.forEach(l=>{ html += `<th>${l} (₹/100kg)</th>`; });
+    html += '<th>CMT</th><th>Rej%</th><th>Profit%</th></tr></thead><tbody>';
+    history.forEach(h=>{
+      const d = h.data || {};
+      const dt = new Date(h.saved_at).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+      html += `<tr><td>${dt}</td><td class="hm">${d.newMonth||'—'}</td>`;
+      (d.rawMats||[]).forEach(r=>{ html += `<td>${f(r.nw)}</td>`; });
+      html += `<td>${f(d.cmt)}</td><td>${f(d.rejPct)}</td><td>${f(d.profitPct)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    document.getElementById('hist-body').innerHTML = html;
+  }catch(e){
+    document.getElementById('hist-body').innerHTML = `<div style="text-align:center;padding:40px;color:#dc2626">Error: ${e.message}</div>`;
+  }
+}
+function closeHistory(){
+  document.getElementById('hist-modal').style.display = 'none';
+}
 </script>
+
+<!-- History Modal -->
+<div id="hist-modal" class="hist-modal" style="display:none" onclick="if(event.target===this)closeHistory()">
+  <div class="hist-box">
+    <div class="hist-head">
+      <div>
+        <div class="ttl" id="hist-title">Change History</div>
+        <div class="sub" id="hist-sub"></div>
+      </div>
+      <button class="hist-close" onclick="closeHistory()">✕ Close</button>
+    </div>
+    <div class="hist-body" id="hist-body"></div>
+  </div>
+</div>
 </body>
 </html>
